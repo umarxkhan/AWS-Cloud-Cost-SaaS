@@ -37,10 +37,11 @@ locals {
 
 # ---------------------------------------------------------------------------
 # PLAN ROLE (terraform init + terraform plan on pull requests).
-# Only access to the Terraform remote S3 state backend is required.
-# use_lockfile=true means plan acquires/releases the S3 lock file, so it needs
-# ListBucket (bucket) + GetObject/PutObject/DeleteObject (state + lock file).
-# No DynamoDB, no other resources.
+# - Terraform S3 state backend access (state file + use_lockfile lock file):
+#     s3:ListBucket (bucket) + s3:Get/Delete/PutObject (state + lock file).
+# - Read-only permissions to REFRESH every managed resource namespace so a
+#   normal `terraform plan` (refresh enabled) can run once infrastructure
+#   exists. NO write permissions are granted to the managed services.
 # ---------------------------------------------------------------------------
 resource "aws_iam_role" "github_plan" {
   name = "${var.name_prefix}github-plan"
@@ -70,6 +71,7 @@ resource "aws_iam_role_policy" "github_plan_policy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # ---- Terraform S3 state backend (state file + lock file; use_lockfile).
       {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
@@ -79,6 +81,64 @@ resource "aws_iam_role_policy" "github_plan_policy" {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         Resource = [local.state_objects_arn]
+      },
+      # ---- S3: read-only refresh of the frontend bucket Terraform manages.
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket", "s3:GetBucket*", "s3:GetObject"]
+        Resource = [local.frontend_bucket_arn, local.frontend_objects_arn]
+      },
+      # ---- Cognito: read-only refresh (pool, client, domain).
+      {
+        Effect   = "Allow"
+        Action   = ["cognito-idp:Get*", "cognito-idp:List*"]
+        Resource = ["arn:aws:cognito-idp:${var.region}:*"]
+      },
+      # ---- DynamoDB: read-only refresh (table definitions).
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:DescribeTable", "dynamodb:DescribeContinuousBackups"]
+        Resource = ["arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.name_prefix}*"]
+      },
+      # ---- CloudFront: read-only refresh (distribution + OAC).
+      {
+        Effect   = "Allow"
+        Action   = ["cloudfront:Get*", "cloudfront:List*"]
+        Resource = ["arn:aws:cloudfront:*"]
+      },
+      # ---- SQS: read-only refresh (queue + DLQ).
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:Get*", "sqs:List*"]
+        Resource = ["arn:aws:sqs:${var.region}:${var.account_id}:${var.name_prefix}*"]
+      },
+      # ---- EventBridge / CloudWatch Events: read-only refresh (schedule rule).
+      {
+        Effect   = "Allow"
+        Action   = ["events:Get*", "events:List*", "events:Describe*"]
+        Resource = ["arn:aws:events:${var.region}:${var.account_id}:rule/${var.name_prefix}*"]
+      },
+      # ---- Lambda: read-only refresh (functions, function policies, event-source mappings).
+      {
+        Effect   = "Allow"
+        Action   = ["lambda:Get*", "lambda:List*"]
+        Resource = ["arn:aws:lambda:${var.region}:${var.account_id}:function/${var.name_prefix}*"]
+      },
+      # ---- API Gateway: read-only refresh (Terraform uses dynamic rest-api ids).
+      {
+        Effect   = "Allow"
+        Action   = ["apigateway:GET"]
+        Resource = ["arn:aws:apigateway:${var.region}:${var.account_id}:restapis/*"]
+      },
+      # ---- IAM: read-only refresh (roles, inline policies, OIDC provider).
+      {
+        Effect = "Allow"
+        Action = ["iam:Get*", "iam:List*"]
+        Resource = [
+          "arn:aws:iam::role/${var.name_prefix}*",
+          "arn:aws:iam::policy/${var.name_prefix}*",
+          "arn:aws:iam::oidc-provider/token.actions.githubusercontent.com",
+        ]
       }
     ]
   })
