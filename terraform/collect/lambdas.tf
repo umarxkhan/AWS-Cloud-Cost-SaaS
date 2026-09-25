@@ -62,12 +62,18 @@ resource "aws_lambda_function" "worker" {
 }
 
 # Wire the SQS queue as the worker's event source.
-# SQS ->> WORKER TRIGGER (pending): the v6 provider's declarative event-source
-# mapping schema could not be validated locally without backend access, so it
-# is intentionally not declared here. The real trigger MUST be registered at
-# deploy time (aws CLI `lambda event-source-mapping` / AWS API or the confirmed
-# provider resource during the AWS-backed `terraform plan` review, Stage 7).
-# The invoke permission below authorizes the queue principal to call the worker.
+# batch_size 10, max batching window 60s, enabled.
+# visibility_timeout (300) >= worker timeout (120) for safe processing.
+resource "aws_lambda_event_source_mapping" "sqs_to_worker" {
+  event_source_arn                   = aws_sqs_queue.queue.arn
+  function_name                      = aws_lambda_function.worker.arn
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 60
+  enabled                            = true
+}
+
+# The event-source mapping owns the SQS->Lambda integration; this permission is
+# retained as belt-and-braces so the queue principal may invoke the worker.
 resource "aws_lambda_permission" "allow_sqs_to_worker" {
   statement_id  = "AllowExecutionFromCollectionQueue"
   action        = "lambda:InvokeFunction"
