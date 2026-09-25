@@ -1,43 +1,57 @@
-"""API router (skeleton).
+"""API router: route matching + dispatch.
 
-AUTHORIZATION PRINCIPLE:
-- The backend derives `tenant_id` and role from the Cognito id_token `sub`
-  resolved through the `saas-users` DynamoDB table. It MUST NEVER accept a
-  client-supplied `tenant_id` for authorization purposes.
-- The frontend may supply `accountId` (path/query), but the backend MUST verify
-  that the account belongs to the caller's tenant before any access.
-
-Planned routes (final set, enforced in implementation stage):
-
-    GET   /health                              unauthenticated
-    POST  /accounts/link                       tenant admin, platform_admin
-    GET   /accounts                            any authenticated (scoped)
-    GET   /accounts/{accountId}                tenant admin, platform_admin
-    POST  /accounts/{accountId}/validate       tenant admin, platform_admin
-    GET   /costs/daily?accountId&start&end     any authenticated (scoped)
-    GET   /costs/monthly?accountId&month       any authenticated (scoped)
-    GET   /costs/breakdown?accountId&date      any authenticated (scoped)
-
-Shared-auth: /health is NONE; everything else requires the Cognito authorizer
-and must still re-validate claims + resolve tenant on the backend (never the
-edge authorizer alone).
+Imports use top-level module names (`shared`, `routes`) to match the Lambda
+flat package layout (see scripts/package_lambdas.py). The handler resolves the
+Cognito sub -> saas-users -> tenant/role and passes the TenantContext here.
 """
 from __future__ import annotations
 
-from typing import Any
+import re
+from collections.abc import Callable
 
-ROUTES: dict[tuple[str, str], str] = {
+from routes import accounts, costs
+from shared.errors import not_found
+
+_STATIC = {
     ("GET", "/health"): "health",
-    ("POST", "/accounts/link"): "accounts.link",
     ("GET", "/accounts"): "accounts.list",
-    ("POST", "/accounts/{accountId}/validate"): "accounts.validate",
+    ("POST", "/accounts/link"): "accounts.link",
     ("GET", "/costs/daily"): "costs.daily",
     ("GET", "/costs/monthly"): "costs.monthly",
     ("GET", "/costs/breakdown"): "costs.breakdown",
 }
 
+_DYNAMIC = [
+    (r"^/accounts/(?P<accountId>[^/]+)/validate$", "POST", "accounts.validate"),
+    (r"^/accounts/(?P<accountId>[^/]+)$", "GET", "accounts.item"),
+]
 
-def route(event: dict[str, Any]) -> dict[str, Any]:
-    # TODO(implementation stage): match method+path, run authorization,
-    # dispatch to route handlers under backend/api/routes/.
-    raise NotImplementedError("Implemented in stage 3")
+_HANDLERS: dict[str, Callable[..., dict]] = {
+    "accounts.link": accounts.link,
+    "accounts.list": accounts.list,
+    "accounts.item": accounts.get,
+    "accounts.validate": accounts.validate,
+    "costs.daily": costs.daily,
+    "costs.monthly": costs.monthly,
+    "costs.breakdown": costs.breakdown,
+}
+
+
+def route(ctx, method: str, path: str, path_params: dict, query: dict, body: dict) -> dict:
+    method = (method or "GET").upper()
+
+    match = _STATIC.get((method, path))
+    if match == "health":
+        return {"status": "ok", "service": "cloud-cost-calculator-saas"}
+    if match is not None and match in _HANDLERS:
+        params = {}
+        return _HANDLERS[match](ctx, params, query or {}, body or {})
+
+    for pattern, dyn_method, name in _DYNAMIC:
+        m = re.fullmatch(pattern, path)
+        if m and dyn_method == method and name in _HANDLERS:
+            params = dict(m.groupdict())
+            params.update(path_params or {})
+            return _HANDLERS[name](ctx, params, query or {}, body or {})
+
+    raise not_found("Route not found", "ROUTE_NOT_FOUND")

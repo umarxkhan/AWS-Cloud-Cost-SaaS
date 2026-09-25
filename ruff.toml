@@ -1,0 +1,11 @@
+line-length = 120
+target-version = "py311"
+
+exclude = ["backend/build"]
+
+[lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+# BLE001: intentional defensive `except Exception` guards in the data layer /
+#          handler (log-and-map-to-safe-response / return-None patterns).
+# DTZ007: false positive — we parse validated YYYY-MM-DD strings and call .date().
+ignore = ["BLE001", "DTZ007", "B904"]
