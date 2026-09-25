@@ -18,7 +18,13 @@ os.environ.setdefault("COLLECTION_JOBS_TABLE", "saas-prod-collection-jobs")
 os.environ.setdefault("QUEUE_URL", "http://local.test/cost-collection-queue")
 os.environ.setdefault("WORKER_FUNCTION", "saas-prod-collector-worker")
 
+import jwtkit  # noqa: E402  (test JWT kit)
 import shared.db as _db  # noqa: E402  (needs sys.path set above)
+
+os.environ.setdefault("COGNITO_USER_POOL_ID", jwtkit.USER_POOL_ID)
+os.environ.setdefault("COGNITO_CLIENT_ID", jwtkit.CLIENT_ID)
+os.environ.setdefault("AWS_REGION", jwtkit.REGION)
+os.environ["COGNITO_JWKS"] = jwtkit.jwks_json()
 
 
 def _create_tables():

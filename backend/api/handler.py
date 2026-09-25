@@ -12,8 +12,8 @@ import os
 from decimal import Decimal
 from typing import Any
 
-import auth
 import router
+from jwt_verify import extract_bearer, verify_access_token
 from shared import tenancy
 from shared.errors import ApiError, server_error
 
@@ -37,14 +37,17 @@ def lambda_handler(event: dict | None = None, context: Any = None) -> dict:
     query = event.get("queryStringParameters") or {}
     body = _parse_body(event)
 
-    # /health is unauthenticated; everything else must resolve an active user.
-    ctx = None
-    if path != _HEALTH_PATH:
-        sub = auth.get_sub(event)
-        ctx = tenancy.resolve_tenant_context(sub)
-
     status = 200
     try:
+        # /health is unauthenticated; everything else must present a valid
+        # Cognito access token (verified server-side) and resolve an active user.
+        ctx = None
+        if path != _HEALTH_PATH:
+            token = extract_bearer(event.get("headers"))
+            claims = verify_access_token(token)
+            sub = claims.get("sub")
+            ctx = tenancy.resolve_tenant_context(sub)
+
         payload = router.route(ctx, method, path, path_params, query, body)
     except ApiError as err:
         if err.status_code >= 500:

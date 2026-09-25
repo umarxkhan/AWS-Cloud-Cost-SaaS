@@ -65,6 +65,8 @@ def main() -> int:
                 "--target", str(dst),
                 "aws-lambda-powertools>=3,<4",
                 "pydantic>=2.8,<3",
+                "PyJWT>=2.8,<3",
+                "cryptography>=42",
             ]
         )
         print(f"packaged build/{name}")

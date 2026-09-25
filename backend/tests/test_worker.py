@@ -1,4 +1,7 @@
+import json
+
 import collect.worker as w
+import pytest
 from shared import db
 
 
@@ -118,3 +121,60 @@ def test_collect_uses_assumed_ce_credentials_and_daily_granularity(seeded, monke
     # Written using the approved cost-data PK/SK
     rows = db.query_cost_data("T_A", "111122223333", "2026-09-03", "2026-09-03")
     assert rows and float(rows[0]["total_cost"]) == 10.0
+
+
+# --- SQS failure handling (do not acknowledge failed messages) --------------
+def test_sqs_handler_success_returns_200(seeded, monkeypatch):
+    monkeypatch.setattr(w, "_assume", lambda cfg: {"AccessKeyId": "k", "SecretAccessKey": "s", "SessionToken": "t"})
+    monkeypatch.setattr(w, "_assumed", lambda creds, svc: _fake_identity("111122223333"))
+
+    event = {"Records": [{
+        "messageId": "m-1",
+        "body": json.dumps({"tenant_id": "T_A", "account_id": "111122223333", "task": "validate"}),
+    }]}
+    resp = w.handler(event)
+    assert resp["statusCode"] == 200
+    assert resp["body"].startswith("{")
+
+
+def test_sqs_handler_raises_when_a_record_fails(seeded):
+    # collect with a malformed date -> run_task ERROR -> handler must NOT return
+    # 200 (which would acknowledge/delete the message).
+    event = {"Records": [{
+        "messageId": "m-1",
+        "body": json.dumps({"tenant_id": "T_A", "account_id": "111122223333", "task": "collect", "date": "garbage"}),
+    }]}
+    with pytest.raises(RuntimeError):
+        w.handler(event)
+
+
+# --- idempotent cost-data writes ---------------------------------------------
+def test_duplicate_cost_data_write_is_idempotent(seeded):
+    db.put_cost_data("T_A", "111122223333", "2026-09-04", 5.0, {"S3": 5.0})
+    # Duplicate redelivery tries to write a DIFFERENT value for the same day.
+    db.put_cost_data("T_A", "111122223333", "2026-09-04", 999.0, {"RDS": 999.0})
+    rows = db.query_cost_data("T_A", "111122223333", "2026-09-04", "2026-09-04")
+    assert len(rows) == 1
+    assert float(rows[0]["total_cost"]) == 5.0  # first successful record preserved
+
+
+# --- collection date validation ----------------------------------------------
+def test_collect_rejects_malformed_date(seeded):
+    cfg = db.get_account("T_A", "111122223333")
+    r = w.run_collect(cfg, "2026-9-3")  # not zero-padded / not strict YYYY-MM-DD
+    assert r["status"] == "ERROR"
+
+
+def test_collect_accepts_valid_date(seeded, monkeypatch):
+    monkeypatch.setattr(w, "_assume", lambda cfg: {"AccessKeyId": "k", "SecretAccessKey": "s", "SessionToken": "t"})
+
+    class _CE:
+        def get_cost_and_usage(self, **kwargs):
+            return {"ResultsByTime": [{"Groups": [
+                {"Keys": ["AmazonS3"], "Metrics": {"UnblendedCost": {"Amount": "7.0"}}}
+            ]}]}
+
+    monkeypatch.setattr(w, "_assumed", lambda creds, svc: _CE())
+    r = w.run_collect(db.get_account("T_A", "111122223333"), "2026-09-05")
+    assert r["status"] == "OK"
+    assert r["total_cost"] == 7.0

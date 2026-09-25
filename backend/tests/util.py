@@ -1,7 +1,9 @@
 import json
 
+import jwtkit
 
-def gw(method, path, sub=None, query=None, body=None, path_params=None, claims=None):
+
+def gw(method, path, sub=None, query=None, body=None, path_params=None, claims=None, token=None):
     claims = dict(claims) if claims else {}
     if sub:
         claims["sub"] = sub
@@ -14,13 +16,20 @@ def gw(method, path, sub=None, query=None, body=None, path_params=None, claims=N
     }
     if body is not None:
         event["body"] = json.dumps(body)
+    headers = {}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    elif sub:
+        headers["Authorization"] = "Bearer " + jwtkit.mint(sub)
+    if headers:
+        event["headers"] = headers
     return event
 
 
-def call(method, path, sub=None, **kw):
+def call(method, path, sub=None, token=None, **kw):
     from api.handler import lambda_handler
 
-    return lambda_handler(gw(method, path, sub=sub, **kw))
+    return lambda_handler(gw(method, path, sub=sub, token=token, **kw))
 
 
 def body(resp):

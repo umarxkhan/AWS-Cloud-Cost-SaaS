@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import boto3
-from shared import db
+from shared import db, validation
 
 
 def handler(event: dict | None = None, context: Any = None) -> dict:
@@ -25,12 +25,25 @@ def handler(event: dict | None = None, context: Any = None) -> dict:
     records = event.get("Records")
     if records:
         results = []
+        failed = False
         for rec in records:
             try:
                 payload = json.loads(rec.get("body") or "{}")
             except Exception:  # noqa: BLE001
                 payload = {}
-            results.append(run_task(payload))
+            result = run_task(payload)
+            results.append(result)
+            if result.get("status") == "ERROR":
+                failed = True
+        if failed:
+            # Do NOT acknowledge: raise so SQS/Lambda redrive retries the batch
+            # and (after max receives) it lands in the DLQ. (A 200 would delete
+            # the message. Partial batch failure requires the event-source
+            # mapping to enable ReportBatchItemFailures, which is not declared
+            # in the current infrastructure, so raising is the safe default.)
+            raise RuntimeError(
+                "one or more collection messages failed; batch not acknowledged"
+            )
         return {"statusCode": 200, "body": json.dumps({"results": results})}
     # Direct synchronous invocation from the backend (validate task).
     return run_task(event)
@@ -106,7 +119,9 @@ def run_validate(cfg: dict) -> dict:
 
 
 def run_collect(cfg: dict, date: str | None) -> dict:
-    day = date or _yesterday()
+    day = _normalize_day(date)
+    if day is None:
+        return {"status": "ERROR", "message": "invalid collection date"}
     try:
         creds = _assume(cfg)
         ce = _assumed(creds, "ce")
@@ -138,6 +153,16 @@ def run_collect(cfg: dict, date: str | None) -> dict:
         }
     except Exception:  # noqa: BLE001
         return {"status": "ERROR", "message": "cost collection failed"}
+
+
+def _normalize_day(date: str | None) -> str | None:
+    """Return a validated YYYY-MM-DD value or None if missing/malformed."""
+    if date is None:
+        return _yesterday()
+    try:
+        return validation.parse_date(date, "date").isoformat()
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _now_iso() -> str:

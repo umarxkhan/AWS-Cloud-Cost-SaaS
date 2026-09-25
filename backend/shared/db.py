@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import boto3
+from botocore.exceptions import ClientError
 
 from .errors import conflict
 
@@ -222,18 +223,28 @@ def put_cost_data(
 ) -> None:
     # DynamoDB numbers must be Decimal, never float.
     services_dec = {str(k): Decimal(str(float(v))) for k, v in (services or {}).items()}
-    cost_data_table().put_item(
-        Item={
-            "pk": cost_data_key(tenant_id, aws_account_id),
-            "sk": day,
-            "tenant_id": tenant_id,
-            "aws_account_id": aws_account_id,
-            "total_cost": Decimal(str(float(total_cost))),
-            "services": services_dec,
-            "currency": currency,
-            "collected_at": _utcnow_iso(),
-        }
-    )
+    item = {
+        "pk": cost_data_key(tenant_id, aws_account_id),
+        "sk": day,
+        "tenant_id": tenant_id,
+        "aws_account_id": aws_account_id,
+        "total_cost": Decimal(str(float(total_cost))),
+        "services": services_dec,
+        "currency": currency,
+        "collected_at": _utcnow_iso(),
+    }
+    try:
+        cost_data_table().put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(pk)",
+        )
+    except ClientError as exc:
+        code = (exc.response or {}).get("Error", {}).get("Code")
+        if code == "ConditionalCheckFailedException":
+            # Duplicate/redelivered message for the same (tenant, account, day):
+            # a successful record already exists - idempotently skip, don't overwrite.
+            return None
+        raise
 
 
 # --- collection jobs ----------------------------------------------------------
