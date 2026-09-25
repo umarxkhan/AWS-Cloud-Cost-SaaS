@@ -1,0 +1,27 @@
+# Terraform binaries, state files, and locks
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Python cache & virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Node modules & build artifacts
+node_modules/
+dist/
+build/
+*.zip
+*.tar.gz
+
+# Git metadata
+.git/
+
+# Sensitive local secrets
+.env
+.env.*
+*.pem
+*.key
