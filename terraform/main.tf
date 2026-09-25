@@ -1,65 +1,90 @@
+# ---------------------------------------------------------------------------
+# Cloud Cost Calculator SaaS - root Terraform (SaaS control account only).
+# Multi-tenant shared infrastructure. NO per-customer infrastructure.
+# ---------------------------------------------------------------------------
+
+terraform {
+  required_version = ">= 1.5.0"
+
+  backend "s3" {
+    # STATE-BUCKET BOOTSTRAP CONTRACT:
+    # The bucket is a ONE-TIME manual bootstrap resource, created BEFORE this
+    # configuration ever runs `terraform init` (Terraform cannot create the
+    # backend it is already using). It is intentionally NOT defined anywhere in
+    # this Terraform configuration. Name: "${environment_prefix}terraform-state-<aws_account_id>".
+    # bucket / key / region are supplied via `terraform init -backend-config=...`.
+    use_lockfile = true # modern S3-native locking (no DynamoDB lock table)
+  }
+}
+
 provider "aws" {
   region = var.region
-}
+  # Account-safety: only operate within the intended SaaS control account.
+  allowed_account_ids = [var.aws_account_id]
 
-module "s3_dashboard" {
-  source      = "./modules/s3_dashboard"
-  bucket_name = var.s3_bucket_name
-  region      = var.region
-}
-
-module "cloudfront_acm" {
-  source = "./modules/cloudfront-acm"
-
-  bucket_name                 = module.s3_dashboard.bucket_name
-  bucket_regional_domain_name = module.s3_dashboard.bucket_regional_domain_name
-  bucket_arn                  = module.s3_dashboard.bucket_arn
-  s3_origin_id                = "s3-dashboard-origin" # internal identifier
-  domain_name                 = var.domain_name
-  price_class                 = var.price_class
-  tags                        = var.tags
-}
-
-module "lambda" {
-  source         = "./modules/lambda"
-  lambda_name    = var.lambda_name
-  s3_bucket_name = var.s3_bucket_name
-  ddb_table      = var.ddb_table
-}
-
-module "eventbridge" {
-  source      = "./modules/eventbridge"
-  lambda_arn  = module.lambda.fetch_costs_arn
-  lambda_name = module.lambda.fetch_costs_name
-}
-
-module "dynamodb" {
-  source     = "./modules/dynamodb"
-  table_name = var.ddb_table
-}
-
-##############################
-# CloudFront Cache Invalidation
-# Purpose: Clears the CloudFront cache automatically after Terraform applies
-# Why: Ensures that updated files (dashboard, JS, CSS) are served immediately
-##############################
-
-resource "null_resource" "invalidate_cloudfront" {
-  # Triggers force this resource to run when the CloudFront distribution changes
-  # or when the last_update timestamp changes (every apply)
-  triggers = {
-    distribution_id = module.cloudfront_acm.distribution_id
-    last_update     = timestamp() # forces invalidation on every apply
-  }
-
-  # local-exec provisioner runs a shell command on your machine
-  provisioner "local-exec" {
-    command = <<EOT
-      # Create a CloudFront invalidation for all paths
-      aws cloudfront create-invalidation \
-        --distribution-id ${module.cloudfront_acm.distribution_id} \
-        --paths "/*"
-    EOT
+  default_tags {
+    tags = local.tags
   }
 }
 
+# -- Modules ----------------------------------------------------------------
+
+module "auth" {
+  source        = "./auth"
+  name_prefix   = local.prefix
+  region        = local.region
+  domain_prefix = var.cognito_domain_prefix
+  tags          = local.tags
+}
+
+module "data" {
+  source      = "./data"
+  name_prefix = local.prefix
+  region      = local.region
+  account_id  = var.aws_account_id
+  tags        = local.tags
+}
+
+module "collect" {
+  source                      = "./collect"
+  name_prefix                 = local.prefix
+  region                      = local.region
+  tags                        = local.tags
+  collection_schedule         = var.collection_schedule
+  users_table                 = module.data.users_table_name
+  tenants_table               = module.data.tenants_table_name
+  customer_accounts_table     = module.data.customer_accounts_table_name
+  cost_data_table             = module.data.cost_data_table_name
+  collection_jobs_table       = module.data.collection_jobs_table_name
+  tenants_table_arn           = module.data.tenants_table_arn
+  customer_accounts_table_arn = module.data.customer_accounts_table_arn
+  cost_data_table_arn         = module.data.cost_data_table_arn
+  collection_jobs_table_arn   = module.data.collection_jobs_table_arn
+  users_table_arn             = module.data.users_table_arn
+}
+
+module "backend" {
+  source                      = "./backend"
+  name_prefix                 = local.prefix
+  region                      = local.region
+  tags                        = local.tags
+  users_table                 = module.data.users_table_name
+  tenants_table               = module.data.tenants_table_name
+  customer_accounts_table     = module.data.customer_accounts_table_name
+  cost_data_table             = module.data.cost_data_table_name
+  users_table_arn             = module.data.users_table_arn
+  tenants_table_arn           = module.data.tenants_table_arn
+  customer_accounts_table_arn = module.data.customer_accounts_table_arn
+  cost_data_table_arn         = module.data.cost_data_table_arn
+  worker_arn                  = module.collect.worker_arn
+  frontend_origin             = var.frontend_origin
+  user_pool_id                = module.auth.user_pool_id
+  client_id                   = module.auth.client_id
+}
+
+module "oidc" {
+  source      = "./oidc"
+  name_prefix = local.prefix
+  account_id  = var.aws_account_id
+  region      = local.region
+}

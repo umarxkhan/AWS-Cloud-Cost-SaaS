@@ -1,26 +1,32 @@
-output "bucket_name" {
-  value = module.s3_dashboard.bucket_name
+output "api_gateway_url" {
+  value = module.backend.api_gateway_url
 }
 
 output "cloudfront_url" {
-  value       = "https://${module.cloudfront_acm.cloudfront_domain}"
-  description = "Public URL of the site via CloudFront"
+  value = "https://${module.data.cloudfront_domain}"
 }
 
-# Lambda function ARN and name
-output "lambda_arn" {
-  value       = module.lambda.fetch_costs_arn
-  description = "ARN of the deployed Lambda function"
+output "cognito_user_pool_id" {
+  value = module.auth.user_pool_id
 }
 
-output "lambda_name" {
-  value       = module.lambda.fetch_costs_name
-  description = "Name of the deployed Lambda function"
+output "cognito_client_id" {
+  value = module.auth.client_id
 }
 
-# DynamoDB table name
-output "ddb_table_name" {
-  value       = module.dynamodb.table_name
-  description = "Name of the DynamoDB table storing cost data"
+output "cognito_domain" {
+  value = module.auth.domain
 }
 
+output "collection_queue_url" {
+  value = module.collect.collection_queue_url
+}
+
+output "collection_dlq_url" {
+  value = module.collect.collection_dlq_url
+}
+
+output "saas_state_bucket" {
+  description = "Manually bootstrapped Terraform state bucket (NOT created by this config; globally-unique name incorporating the account id)."
+  value       = "${var.environment_prefix}terraform-state-${var.aws_account_id}"
+}

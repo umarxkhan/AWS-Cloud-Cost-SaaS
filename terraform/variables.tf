@@ -1,39 +1,41 @@
-variable "s3_bucket_name" {
-  description = "S3 bucket for the dashboard"
-  type        = string
-}
-
 variable "region" {
-  description = "AWS region"
   type        = string
+  description = "AWS region for all SaaS control-account resources."
   default     = "eu-central-1"
 }
 
-variable "domain_name" {
-  description = "Custom domain (e.g., mubarak.khan.cloud1.engineer)"
+variable "tf_environment" {
   type        = string
+  description = "Terraform environment name (prod / staging / dev)."
+  default     = "prod"
+}
+
+variable "environment_prefix" {
+  type        = string
+  description = "Prefix for all AWS resource names (e.g. saas-prod-)."
+}
+
+# Account-safety guard input. NEVER hardcode the real account id in source.
+# Supplied per-environment via terraform.tfvars and/or GitHub Actions vars.
+variable "aws_account_id" {
+  type        = string
+  description = "SaaS control AWS account id. Required for the allowed_account_ids guard."
+}
+
+variable "cognito_domain_prefix" {
+  type        = string
+  description = "Prefix for the Cognito Hosted UI domain."
+  default     = "saas-cost-calculator"
+}
+
+variable "frontend_origin" {
+  type        = string
+  description = "CloudFront origin (https://xxx.cloudfront.net) used for Cognito callbacks/CORS. Filled after first deploy."
   default     = ""
 }
 
-variable "price_class" {
-  description = "CloudFront price class"
+variable "collection_schedule" {
   type        = string
-  default     = "PriceClass_200"
-}
-
-variable "tags" {
-  description = "Tags to apply"
-  type        = map(string)
-  default     = {}
-}
-
-variable "lambda_name" {
-  type        = string
-  description = "Name of the Lambda function"
-  default     = "fetch_cloud_costs"
-}
-
-variable "ddb_table" {
-  type        = string
-  description = "DynamoDB table name to store AWS cost data"
+  description = "EventBridge schedule expression for the daily collector-enqueue trigger (once per day MVP)."
+  default     = "cron(0 6 * * ? *)"
 }

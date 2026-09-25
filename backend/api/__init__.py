@@ -1,0 +1,1 @@
+"""API Gateway handler package for backend-api Lambda."""

@@ -10,8 +10,9 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 *.tfstate.backup
+# Terraform working directory (provider/module cache) - NOT the lock file
 .terraform/
-.terraform.lock.hcl
+# NOTE: .terraform.lock.hcl (provider lock) IS committed for reproducible versions
 
 # AWS Lambda / Node / build artifacts
 *.zip
@@ -48,3 +49,12 @@ Thumbs.db
 
 # Generated Lambda response
 lambda-response.json
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
+
+# Backend build artifacts
+backend/*.zip
+collect.zip
+backend/build/
