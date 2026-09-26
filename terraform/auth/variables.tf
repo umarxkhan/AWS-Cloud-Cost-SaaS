@@ -14,6 +14,11 @@ variable "domain_prefix" {
   default     = "saas-cost-calculator"
 }
 
+variable "frontend_origin" {
+  type        = string
+  description = "Frontend origin used for Cognito OAuth callback and logout URLs."
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

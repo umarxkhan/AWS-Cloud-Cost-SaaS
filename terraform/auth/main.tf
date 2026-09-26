@@ -69,10 +69,6 @@ resource "aws_cognito_user_pool_client" "client" {
   explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH"]
   supported_identity_providers         = ["COGNITO"]
 
-  # DEL BLOCKER (before activation): set callback/logout URLs to the real
-  # CloudFront origin (https://<distribution>.cloudfront.net) obtained from
-  # `terraform output cloudfront_url` after the first apply. localhost URLs are
-  # for local development only and must not remain for production.
-  callback_urls = ["http://localhost:3000/callback", "https://example-placeholder.auth"]
-  logout_urls   = ["http://localhost:3000", "http://localhost:3000/callback"]
+  callback_urls = ["${var.frontend_origin}/callback"]
+  logout_urls   = [var.frontend_origin, "${var.frontend_origin}/callback"]
 }

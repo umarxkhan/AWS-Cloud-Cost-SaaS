@@ -30,7 +30,7 @@ variable "cognito_domain_prefix" {
 
 variable "frontend_origin" {
   type        = string
-  description = "CloudFront origin (https://xxx.cloudfront.net) used for Cognito callbacks/CORS. Filled after first deploy."
+  description = "CloudFront frontend origin used for Cognito OAuth callback and logout URLs."
   default     = ""
 }
 

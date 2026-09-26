@@ -30,11 +30,12 @@ provider "aws" {
 # -- Modules ----------------------------------------------------------------
 
 module "auth" {
-  source        = "./auth"
-  name_prefix   = local.prefix
-  region        = local.region
-  domain_prefix = var.cognito_domain_prefix
-  tags          = local.tags
+  source          = "./auth"
+  name_prefix     = local.prefix
+  region          = local.region
+  domain_prefix   = var.cognito_domain_prefix
+  frontend_origin = var.frontend_origin
+  tags            = local.tags
 }
 
 module "data" {
@@ -77,7 +78,6 @@ module "backend" {
   customer_accounts_table_arn = module.data.customer_accounts_table_arn
   cost_data_table_arn         = module.data.cost_data_table_arn
   worker_arn                  = module.collect.worker_arn
-  frontend_origin             = var.frontend_origin
   user_pool_id                = module.auth.user_pool_id
   user_pool_arn               = module.auth.user_pool_arn
   client_id                   = module.auth.client_id
