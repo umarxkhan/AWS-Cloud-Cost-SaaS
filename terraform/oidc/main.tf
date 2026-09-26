@@ -92,7 +92,7 @@ resource "aws_iam_role_policy" "github_plan_policy" {
       {
         Effect   = "Allow"
         Action   = ["cognito-idp:Get*", "cognito-idp:List*"]
-        Resource = ["arn:aws:cognito-idp:${var.region}:*"]
+        Resource = ["arn:aws:cognito-idp:${var.region}:${var.account_id}:userpool/*"]
       },
       # ---- DynamoDB: read-only refresh (table definitions).
       {
@@ -102,9 +102,12 @@ resource "aws_iam_role_policy" "github_plan_policy" {
       },
       # ---- CloudFront: read-only refresh (distribution + OAC).
       {
-        Effect   = "Allow"
-        Action   = ["cloudfront:Get*", "cloudfront:List*"]
-        Resource = ["arn:aws:cloudfront:*"]
+        Effect = "Allow"
+        Action = ["cloudfront:Get*", "cloudfront:List*"]
+        Resource = [
+          "arn:aws:cloudfront::${var.account_id}:distribution/*",
+          "arn:aws:cloudfront::${var.account_id}:origin-access-control/*",
+        ]
       },
       # ---- SQS: read-only refresh (queue + DLQ).
       {
@@ -128,17 +131,22 @@ resource "aws_iam_role_policy" "github_plan_policy" {
       {
         Effect   = "Allow"
         Action   = ["apigateway:GET"]
-        Resource = ["arn:aws:apigateway:${var.region}:${var.account_id}:restapis/*"]
+        Resource = ["arn:aws:apigateway:${var.region}::/restapis/*"]
       },
       # ---- IAM: read-only refresh (roles, inline policies, OIDC provider).
       {
         Effect = "Allow"
-        Action = ["iam:Get*", "iam:List*"]
-        Resource = [
-          "arn:aws:iam::role/${var.name_prefix}*",
-          "arn:aws:iam::policy/${var.name_prefix}*",
-          "arn:aws:iam::oidc-provider/token.actions.githubusercontent.com",
+        Action = [
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
         ]
+        Resource = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:GetOpenIDConnectProvider"]
+        Resource = ["arn:aws:iam::${var.account_id}:oidc-provider/token.actions.githubusercontent.com"]
       }
     ]
   })
@@ -201,7 +209,7 @@ resource "aws_iam_role_policy" "github_deploy_policy" {
       {
         Effect   = "Allow"
         Action   = ["lambda:PassRole"]
-        Resource = ["arn:aws:iam::role/${var.name_prefix}*"]
+        Resource = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}*"]
       },
       # ---- SQS: cost-collection-queue + cost-collection-dlq.
       {
@@ -220,33 +228,56 @@ resource "aws_iam_role_policy" "github_deploy_policy" {
       {
         Effect   = "Allow"
         Action   = ["apigateway:*"]
-        Resource = ["arn:aws:apigateway:${var.region}:${var.account_id}:restapis/*"]
+        Resource = ["arn:aws:apigateway:${var.region}::/restapis/*"]
       },
       # ---- CloudFront distribution + OAC. The distribution ARN/domain is
       #      provider-assigned and unknown at policy-authoring time, so it is
       #      scoped to the cloudfront namespace (not a bare Resource="*").
       {
-        Effect   = "Allow"
-        Action   = ["cloudfront:*"]
-        Resource = ["arn:aws:cloudfront:*"]
+        Effect = "Allow"
+        Action = ["cloudfront:*"]
+        Resource = [
+          "arn:aws:cloudfront::${var.account_id}:distribution/*",
+          "arn:aws:cloudfront::${var.account_id}:origin-access-control/*",
+        ]
       },
       # ---- Cognito user pool, Hosted-UI domain, app client (pool id is
-      #      generated; scoped to the region).
+      #      generated; scoped to this account and region).
       {
         Effect   = "Allow"
         Action   = ["cognito-idp:*"]
-        Resource = ["arn:aws:cognito-idp:${var.region}:*"]
+        Resource = ["arn:aws:cognito-idp:${var.region}:${var.account_id}:userpool/*"]
       },
-      # ---- IAM: roles, inline policies, and the OIDC provider that Terraform
-      #      creates/manages (saas-prod- prefix + the exact OIDC provider ARN).
+      # ---- IAM: roles, inline policies, and the existing OIDC provider.
+      #      Actions are separated by supported resource type; CreateOpenIDConnectProvider
+      #      is omitted because IAM does not support resource-level scoping for it.
       {
         Effect = "Allow"
-        Action = ["iam:*"]
-        Resource = [
-          "arn:aws:iam::role/${var.name_prefix}*",
-          "arn:aws:iam::policy/${var.name_prefix}*",
-          "arn:aws:iam::oidc-provider/token.actions.githubusercontent.com",
+        Action = [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:ListRolePolicies",
         ]
+        Resource = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}*"]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:GetOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:AddClientIDToOpenIDConnectProvider",
+          "iam:RemoveClientIDFromOpenIDConnectProvider",
+          "iam:TagOpenIDConnectProvider",
+          "iam:UntagOpenIDConnectProvider",
+        ]
+        Resource = ["arn:aws:iam::${var.account_id}:oidc-provider/token.actions.githubusercontent.com"]
       }
     ]
   })
