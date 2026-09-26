@@ -5,8 +5,8 @@
 
 data "archive_file" "api_pkg" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../backend/build/api"
-  output_path = "${path.module}/../../../backend/build/api.zip"
+  source_dir  = "${path.module}/../../backend/build/api"
+  output_path = "${path.module}/../../backend/build/api.zip"
   excludes    = ["__pycache__", "*.pyc"]
 }
 

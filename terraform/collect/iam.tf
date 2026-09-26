@@ -82,7 +82,7 @@ resource "aws_iam_role_policy" "worker_policy" {
       },
       {
         Effect   = "Allow"
-        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility"]
+        Action   = ["sqs:GetQueueAttributes", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility"]
         Resource = aws_sqs_queue.queue.arn
       },
       {

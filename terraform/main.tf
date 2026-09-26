@@ -79,6 +79,7 @@ module "backend" {
   worker_arn                  = module.collect.worker_arn
   frontend_origin             = var.frontend_origin
   user_pool_id                = module.auth.user_pool_id
+  user_pool_arn               = module.auth.user_pool_arn
   client_id                   = module.auth.client_id
 }
 

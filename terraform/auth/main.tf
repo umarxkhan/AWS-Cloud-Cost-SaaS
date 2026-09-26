@@ -40,6 +40,16 @@ resource "aws_cognito_user_pool" "pool" {
   # Cognito API/console (bootstrap). It is NOT a security control — backend
   # authorization uses `saas-users` (role=platform_admin / tenant_id=platform).
 
+  lifecycle {
+    # Cognito schema items are immutable after the pool is created: standard
+    # attributes cannot be changed and custom attributes cannot be modified or
+    # removed. Ignore the schema so Terraform does NOT attempt to reconcile it
+    # against the already-created pool (eu-central-1_cMEKbpLM8) with
+    # "cannot modify or remove schema items". This prevents any destructive
+    # update to the existing pool.
+    ignore_changes = [schema]
+  }
+
   tags = var.tags
 }
 

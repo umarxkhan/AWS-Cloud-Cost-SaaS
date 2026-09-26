@@ -31,7 +31,7 @@ resource "aws_api_gateway_authorizer" "cognito" {
   name          = "cognito_authorizer"
   rest_api_id   = aws_api_gateway_rest_api.api.id
   type          = "COGNITO_USER_POOLS"
-  provider_arns = ["arn:aws:cognito-idp:${var.region}:${var.user_pool_id}"]
+  provider_arns = [var.user_pool_arn]
 }
 
 # === GET /health (unauthenticated) ==========================================

@@ -12,8 +12,8 @@
 
 data "archive_file" "collect_pkg" {
   type        = "zip"
-  source_dir  = "${path.module}/../../../backend/build/collect"
-  output_path = "${path.module}/../../../backend/build/collect.zip"
+  source_dir  = "${path.module}/../../backend/build/collect"
+  output_path = "${path.module}/../../backend/build/collect.zip"
   excludes    = ["__pycache__", "*.pyc"]
 }
 
